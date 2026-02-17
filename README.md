@@ -1,21 +1,19 @@
-# Jarvis - Voice-Activated Application Launcher & Window Manager
+# Jarvis - AI-Powered Offline Automation Assistant
 
-A professional-grade automation script that listens for voice commands and launches specific application suites with automatic window layout management.
+A professional-grade automation tool that uses local AI (Ollama) and offline speech recognition (Vosk) to understand natural language commands and manage your workspace.
 
 ## Features
 
-✨ **Voice Activation**: "Jarvis Go" launches your workspace instantly.  
-🖥️ **Window Management**: Automatically snaps apps to a split-screen layout (Left, Top-Right, Bottom-Right).  
-🗣️ **Voice Feedback**: Jarvis provides verbal confirmations.  
-🎯 **Dual Modes**: 
-  - **Work**: Chrome (Left), VS Code (Top-Right)
-  - **Entertainment**: Chrome (YouTube)
+- **Voice Activation**: "Jarvis" acts as the wake word.
+- **AI Intelligence**: Uses Ollama (Phi-3) to understand intent from natural language (e.g., "I want to code" vs "Open VS Code").
+- **Offline Privacy**: All speech processing and AI analysis happens locally on your machine.
+- **Dynamic Profiles**: easy configuration via `profiles.json`.
 
-## How It Works
+## Prerequisites
 
-- **"Jarvis Go"** → Launches Work Protocol & Arranges Windows
-- **"Jarvis Play"** → Launches Entertainment Protocol
-- **"Jarvis Stop"** → Shuts down system
+1. **Python 3.8+**
+2. **Ollama**: Download and install from [ollama.com](https://ollama.com).
+3. **Vosk Model**: Download `vosk-model-small-en-us-0.15` from [alphacephei.com](https://alphacephei.com/vosk/models).
 
 ## Installation
 
@@ -23,22 +21,35 @@ A professional-grade automation script that listens for voice commands and launc
 
 ```bash
 pip install -r requirements.txt
+pip install ollama
 ```
 
-*Note: Requires `PyAudioWPatch` on Windows for microphone access.*
+*Note: Windows users may need `pip install pyaudiowpatch` for microphone access.*
 
-### Step 2: Configure Application Paths
+### Step 2: Setup Ollama
 
-Open `jarvis_clap_automation.py` and edit the `APP_CONFIG` dictionary:
+Pull the Phi-3 model (lightweight and fast):
+```bash
+ollama run phi3
+```
 
-```python
-APP_CONFIG = {
-    "work_suite": [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe", # App 1 (Left Half)
-        r"C:\Program Files\Microsoft VS Code\Code.exe",          # App 2 (Top Right)
-        # Add 3rd app for Bottom Right
+### Step 3: Configure Model Path
+
+Ensure the Vosk model is extracted to a folder named `model` in the project directory, or update `VOSK_MODEL_PATH` in `jarvis_clap_automation.py`.
+
+## Configuration
+
+Edit `profiles.json` to create custom automation modes.
+
+```json
+{
+  "coding": {
+    "apps": [
+      "C:\\Program Files\\Microsoft VS Code\\Code.exe"
     ],
-    ...
+    "urls": ["https://github.com"],
+    "tts_response": "Happy coding."
+  }
 }
 ```
 
@@ -48,23 +59,24 @@ APP_CONFIG = {
    ```bash
    python jarvis_clap_automation.py
    ```
-2. Wait for calibration: *"Calibrating background noise..."*
-3. When Jarvis says **"I am listening"**, speak your command:
-   - **"Jarvis Go"**
+2. Wait for "System online".
+3. Speak naturally:
+   - "Jarvis, it's time to study."
+   - "Jarvis, I am bored."
+   - "Jarvis, open my coding tools."
 
 ## Troubleshooting
 
 ### "Microphone error"
-Ensure your microphone is set as the Default Information recording device in Windows Sound settings.
+Ensure your microphone is set as the Default Recording Device in Windows Sound settings.
 
-### Windows not moving?
-Some apps (like Discord or Steam) run as Admin. You may need to run this script as Administrator to move them.
-
+### "Ollama not found"
+Ensure the Ollama app is running in the background.
 
 ## License
 
-Free to use and modify. Build something awesome! 🚀
+Free to use and modify.
 
 ## Credits
 
-Built by an Expert Python Developer & Sound Engineer for seamless productivity automation.
+Built by an Expert Python Developer.

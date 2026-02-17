@@ -1,136 +1,142 @@
 """
-Jarvis - Voice-Activated Application Launcher & Window Manager
-Professional-grade automation script that listens for voice commands ("Jarvis Go")
-and launches application suites with specific window layouts.
+Jarvis - AI-Powered Offline Automation Assistant
+Features: Vosk Offline Speech + Ollama Local Intelligence + Dynamic Profiles
 
 Author: Expert Python Developer
-Version: 2.0 (Voice Edition)
+Version: 4.0 (The AI Upgrade)
 """
 
 import sys
-try:
-    import pyaudiowpatch as pyaudio
-    # Monkey-patch: make 'pyaudio' module available to SpeechRecognition
-    sys.modules["pyaudio"] = pyaudio
-except ImportError:
-    print("[WARNING] PyAudioWPatch not found. Microphone access may fail.")
-
+import os
+import json
 import time
-import subprocess
 import threading
+import subprocess
 import pyttsx3
-import speech_recognition as sr
 import pygetwindow as gw
 from queue import Queue
 
+# --- DEPENDENCIES CHECK ---
+try:
+    from vosk import Model, KaldiRecognizer
+    import pyaudiowpatch as pyaudio # Try extended version first
+except ImportError:
+    try:
+        import pyaudio # Fallback to standard
+    except ImportError:
+        print("[FATAL] Missing 'pyaudio'. Install via pip.")
+        sys.exit(1)
+    try:
+        from vosk import Model, KaldiRecognizer
+    except ImportError:
+        print("[FATAL] Missing 'vosk'. Run: pip install vosk")
+        sys.exit(1)
+
+try:
+    import ollama  # pip install ollama
+except ImportError:
+    print("[FATAL] Missing 'ollama'. Run: pip install ollama")
+    sys.exit(1)
+
+
 # ==================== CONFIGURATION ====================
-# Application paths (Windows)
-APP_CONFIG = {
-    "work_suite": [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files\Microsoft VS Code\Code.exe",
-        r"C:\Users\ADITYA GAVANE\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Antigravity", # Example 3rd app
-    ],
-    "entertainment_suite": [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        # r"C:\Program Files\Spotify\Spotify.exe",
-    ],
-    "entertainment_url": "https://www.youtube.com"
-}
+# Path to your Vosk model folder. 
+# If you renamed the folder to 'model', leave as is. 
+# If you kept the long name, change this string to: r"model\vosk-model-small-en-us-0.15"
+VOSK_MODEL_PATH = r"model\vosk-model-small-en-us-0.15" 
 
-TRIGGER_PHRASE = "jarvis go"
-ENTERTAINMENT_PHRASE = "jarvis play"
-EXIT_PHRASES = ["jarvis stop", "exit", "shutdown"]
+PROFILES_FILE = "profiles.json"
+WAKE_WORD = "jarvis"       # The name it listens for
+OLLAMA_MODEL = "phi3"      # Ensure you ran 'ollama run phi3' (or use 'llama3')
 
-# ==================== UTIL: WINDOW MANAGER ====================
-class WindowLayoutManager:
-    """Manages window positioning and resizing"""
-    
+
+# ==================== UTIL: DYNAMIC CONFIG LOADER ====================
+class ConfigManager:
     @staticmethod
-    def get_screen_size():
-        """Get primary screen resolution"""
+    def load_profiles():
+        """Loads profiles from JSON file"""
+        if not os.path.exists(PROFILES_FILE):
+            print(f"[ERROR] {PROFILES_FILE} not found! Please create it.")
+            return {}
         try:
-             import ctypes
-             user32 = ctypes.windll.user32
-             return user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
-        except:
-            return 1920, 1080
+            with open(PROFILES_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[ERROR] JSON Error: {e}")
+            return {}
 
-    @staticmethod
-    def apply_work_layout():
-        """
-        Applies split screen layout:
-        App 1: Left Half
-        App 2: Top Right Quarter
-        App 3: Bottom Right Quarter
-        """
-        width, height = WindowLayoutManager.get_screen_size()
-        half_width = width // 2
-        half_height = height // 2
-        
-        print("\n[LAYOUT] Applying layout...")
-        
-        # Wait for windows to appear
-        time.sleep(3)
-        
-        # Get all visible windows
-        windows = [w for w in gw.getAllWindows() if w.visible and w.title]
-        
-        # Try to find our target apps
-        targets = []
-        for app_path in APP_CONFIG["work_suite"]:
-            name = app_path.split("\\")[-1].lower().replace(".exe", "")
-            found = None
-            for w in windows:
-                title = w.title.lower()
-                if name in title or \
-                   ("chrome" in name and "google chrome" in title) or \
-                   ("code" in name and "visual studio code" in title):
-                    found = w
-                    break
-            if found:
-                targets.append(found)
-            else:
-                print(f"  [WARNING] Window not found for {name}")
 
-        # Layout definitions (x, y, w, h)
-        layouts = [
-            (0, 0, half_width, height),                         # Left Half
-            (half_width, 0, half_width, half_height),           # Top Right
-            (half_width, half_height, half_width, half_height)  # Bottom Right
-        ]
+# ==================== AI BRAIN (OLLAMA) ====================
+class AIBrain:
+    """Uses Local LLM to decide what the user wants"""
+    
+    def __init__(self):
+        self.profiles = ConfigManager.load_profiles()
+        self.available_modes = list(self.profiles.keys())
+    
+    def analyze_intent(self, user_text):
+        """
+        Sends user text to Ollama to determine the intent.
+        Returns: (intent_name)
+        """
+        if not self.available_modes:
+            return "none"
+
+        print(f" [AI] Thinking about: '{user_text}'...")
         
-        for i, window in enumerate(targets):
-            if i >= len(layouts): break
-            x, y, w, h = layouts[i]
-            try:
-                window.restore()
-                window.moveTo(x, y)
-                window.resizeTo(w, h)
-                print(f"  Moved '{window.title[:20]}...' to ({x}, {y}, {w}, {h})")
-            except Exception as e:
-                print(f"  Failed to move {window.title}: {e}")
+        # System prompt to act as a strict classifier
+        system_prompt = (
+            f"You are an intent classifier for a computer automation system. "
+            f"The available modes are: {self.available_modes}. "
+            f"Based on the user's request, output ONLY the mode name. "
+            f"If the request matches nothing, output 'none'. "
+            f"Do not write sentences. Just the mode name."
+        )
+
+        try:
+            response = ollama.chat(model=OLLAMA_MODEL, messages=[
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_text},
+            ])
+            
+            intent = response['message']['content'].strip().lower()
+            
+            # Clean up potential extra punctuation (like "coding.")
+            import re
+            intent = re.sub(r'[^\w]', '', intent)
+            
+            # Validation
+            for mode in self.available_modes:
+                if mode == intent:
+                    return mode
+            
+            return "none"
+            
+        except Exception as e:
+            print(f"[AI ERROR] Could not connect to Ollama: {e}")
+            return "none"
+
+    def get_profile(self, mode_name):
+        return self.profiles.get(mode_name)
+
 
 # ==================== JARVIS VOICE SYSTEM ====================
 class JarvisVoice:
-    """Text-to-Speech system for Jarvis using background thread"""
-    
     def __init__(self):
         self.queue = Queue()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
-        time.sleep(0.5)
     
     def _run(self):
         engine = pyttsx3.init()
-        engine.setProperty('rate', 150)
-        engine.setProperty('volume', 0.9)
+        engine.setProperty('rate', 160) # Slightly faster speech
         
-        voices = engine.getProperty('voices')
-        for voice in voices:
-            if "david" in voice.name.lower() or "male" in voice.name.lower():
-                engine.setProperty('voice', voice.id)
-                break
+        # Try to select a good voice
+        try:
+            voices = engine.getProperty('voices')
+            # Prefer a male voice if available (usually index 0 or look for names)
+            engine.setProperty('voice', voices[0].id)
+        except: pass
         
         while True:
             text = self.queue.get()
@@ -138,139 +144,137 @@ class JarvisVoice:
             try:
                 engine.say(text)
                 engine.runAndWait()
-            except Exception as e:
-                print(f"[WARNING] Speech error: {e}")
-    
+            except: pass
+
     def speak(self, text):
         print(f"[JARVIS]: {text}")
         self.queue.put(text)
 
-# ==================== VOICE LISTENER ====================
+
+# ==================== VOICE LISTENER (VOSK) ====================
 class VoiceListener:
-    """Handles speech recognition"""
-    
     def __init__(self, jarvis):
-        self.r = sr.Recognizer()
-        self.mic = sr.Microphone()
         self.jarvis = jarvis
-    
-    def adapt_to_noise(self):
-        """Calibrate for ambient noise"""
-        print("\n[CALIBRATION] Measuring ambient noise... (please wait)")
-        with self.mic as source:
-            self.r.adjust_for_ambient_noise(source, duration=2)
-        print(f"[CALIBRATION] Complete. Energy threshold: {self.r.energy_threshold:.0f}")
-        self.jarvis.speak("I am listening.")
-    
-    def listen(self):
-        """Listen for a command"""
-        with self.mic as source:
-            print("Listening...", end='\r')
-            try:
-                # Listen with a timeout to keep the loop responsive
-                audio = self.r.listen(source, timeout=1, phrase_time_limit=3)
-                print("Processing... ", end='')
-                text = self.r.recognize_google(audio).lower()
-                print(f"\n[HEARD]: {text}")
-                return text
-            except sr.WaitTimeoutError:
-                return None
-            except sr.UnknownValueError:
-                # Speech not recognized
-                return None
-            except sr.RequestError:
-                print("\n[ERROR] Internet connection required for recognition.")
-                return None
-            except Exception as e:
-                # print(f"\n[ERROR] {e}") # Suppress minor errors
-                return None
-
-# ==================== APPLICATION LAUNCHER ====================
-class ApplicationLauncher:
-    """Launches and manages apps"""
-    
-    @staticmethod
-    def work_protocol(jarvis):
-        print("\n" + "="*50)
-        print("[WORK PROTOCOL INITIATED]")
-        jarvis.speak("Work protocol initiated. Preparing your workspace.")
         
-        for app_path in APP_CONFIG["work_suite"]:
-            try:
-                # Use os.startfile for Windows shortcuts and non-executables
-                import os
-                os.startfile(app_path)
-                print(f"  Launched: {app_path}")
-                time.sleep(1) 
-            except FileNotFoundError:
-                print(f"  [ERROR] Not found: {app_path}")
-            except Exception as e:
-                print(f"  [ERROR] Failed: {e}")
-        
-        jarvis.speak("Arranging windows.")
-        WindowLayoutManager.apply_work_layout()
-        print("="*50 + "\n")
-
-    @staticmethod
-    def entertainment_protocol(jarvis):
-        print("\n" + "="*50)
-        print("[ENTERTAINMENT PROTOCOL ENGAGED]")
-        jarvis.speak("Entertainment protocol engaged. Enjoy.")
-        
-        chrome_path = APP_CONFIG["entertainment_suite"][0]
-        url = APP_CONFIG["entertainment_url"]
-        
-        try:
-            subprocess.Popen([chrome_path, url])
-            print(f"  Launched: {chrome_path} -> {url}")
-        except Exception as e:
-            print(f"  [ERROR] Failed to launch browser: {e}")
+        if not os.path.exists(VOSK_MODEL_PATH):
+            print(f"\n[FATAL] Model folder '{VOSK_MODEL_PATH}' is missing!")
+            print("1. Download 'vosk-model-small-en-us-0.15' from https://alphacephei.com/vosk/models")
+            print("2. Unzip and rename the folder to 'model'")
+            sys.exit(1)
             
-        print("="*50 + "\n")
+        print("[INIT] Loading Vosk Model... (this takes a few seconds)")
+        
+        # Suppress Vosk/ALSA logs
+        try:
+            self.model = Model(VOSK_MODEL_PATH)
+            self.rec = KaldiRecognizer(self.model, 16000)
+            self.p = pyaudio.PyAudio()
+            self.stream = self.p.open(
+                format=pyaudio.paInt16, 
+                channels=1, 
+                rate=16000, 
+                input=True, 
+                frames_per_buffer=8000
+            )
+            self.stream.start_stream()
+        except Exception as e:
+            print(f"[ERROR] Audio initialization failed: {e}")
+            sys.exit(1)
 
-# ==================== MAIN SYSTEM ====================
+    def listen(self):
+        """Returns text if a phrase is heard, else None"""
+        try:
+            data = self.stream.read(4000, exception_on_overflow=False)
+            if self.rec.AcceptWaveform(data):
+                result = json.loads(self.rec.Result())
+                text = result.get('text', '')
+                if text:
+                    return text
+        except OSError:
+            pass # Ignore input overflow
+        return None
+
+
+# ==================== AUTOMATION ENGINE ====================
+class AutomationEngine:
+    @staticmethod
+    def execute_profile(profile, jarvis):
+        if not profile: return
+        
+        # 1. Voice Feedback
+        response = profile.get("tts_response", "Executing protocol.")
+        jarvis.speak(response)
+        
+        # 2. Launch Apps
+        apps = profile.get("apps", [])
+        for app in apps:
+            try:
+                os.startfile(app)
+                print(f"  > Launched: {app}")
+            except Exception as e:
+                print(f"  > Error launching {app}: {e}")
+        
+        # 3. Open URLs
+        urls = profile.get("urls", [])
+        for url in urls:
+            try:
+                # 'start' command handles default browser in Windows
+                subprocess.Popen(f'start {url}', shell=True)
+                print(f"  > Opened: {url}")
+            except Exception as e:
+                print(f"  > Error opening URL: {e}")
+
+
+# ==================== MAIN LOOP ====================
 def main():
     print("""
-    ╔══════════════════════════════════════════════════╗
-    ║         JARVIS VOICE AUTOMATION v2.0             ║
-    ║   Say 'Jarvis Go' to start Work Protocol         ║
-    ╚══════════════════════════════════════════════════╝
+    ╔════════════════════════════════════════╗
+    ║     JARVIS v4.0 (AI + OFFLINE)         ║
+    ║  Say 'Jarvis' followed by a command    ║
+    ╚════════════════════════════════════════╝
     """)
-    
-    jarvis = JarvisVoice()
-    
-    try:
-        listener = VoiceListener(jarvis)
-        listener.adapt_to_noise()
-    except OSError:
-        print("[FATAL] No microphone found. Exiting.")
-        return
 
-    # Laucher Instance
-    launcher = ApplicationLauncher()
+    jarvis = JarvisVoice()
+    listener = VoiceListener(jarvis)
+    brain = AIBrain()
+    automator = AutomationEngine()
+
+    jarvis.speak("System online. Waiting for commands.")
 
     try:
         while True:
-            command = listener.listen()
+            text = listener.listen()
             
-            if command:
-                if TRIGGER_PHRASE in command:
-                    launcher.work_protocol(jarvis)
+            if text:
+                print(f"\n[HEARD]: {text}")
                 
-                elif ENTERTAINMENT_PHRASE in command:
-                    launcher.entertainment_protocol(jarvis)
-                
-                elif any(phrase in command for phrase in EXIT_PHRASES):
-                    jarvis.speak("Shutting down. Goodbye.")
-                    break
+                # Check for Wake Word
+                if WAKE_WORD in text:
+                    # Strip wake word to get the actual command
+                    # e.g., "jarvis start coding" -> "start coding"
+                    command = text.replace(WAKE_WORD, "").strip()
+                    
+                    if not command:
+                        jarvis.speak("Yes?")
+                        continue
+
+                    # AI ANALYSIS
+                    intent = brain.analyze_intent(command)
+                    
+                    if intent != "none":
+                        print(f"[AI DECISION] Intent identified: {intent.upper()}")
+                        profile = brain.get_profile(intent)
+                        automator.execute_profile(profile, jarvis)
+                    else:
+                        print("[AI DECISION] No matching profile found.")
+                        jarvis.speak("I'm not sure which mode you want.")
             
-            # Use sleep to prevent CPU spiking in loop
-            time.sleep(0.1)
-            
+            # Tiny sleep to save CPU when no audio is processed
+            # (Stream read blocks, so this is just for safety)
+            time.sleep(0.01)
+                        
     except KeyboardInterrupt:
-        print("\n[SHUTDOWN] User interrupted.")
-    finally:
-        print("[SHUTDOWN] Complete.")
+        print("\n[EXIT] Goodbye.")
 
 if __name__ == "__main__":
     main()

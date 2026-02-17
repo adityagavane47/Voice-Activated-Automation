@@ -1,0 +1,28 @@
+{
+  "coding": {
+    "trigger_keywords": ["code", "programming", "dev", "develop"],
+    "apps": [
+      "C:\\Program Files\\Microsoft VS Code\\Code.exe",
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+    ],
+    "urls": ["https://github.com", "https://stackoverflow.com"],
+    "tts_response": "Initializing development environment. Happy coding, Aditya."
+  },
+  "university": {
+    "trigger_keywords": ["study", "assignment", "class", "college", "vit"],
+    "apps": [
+      "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+    ],
+    "urls": ["https://classroom.google.com", "https://chatgpt.com"],
+    "tts_response": "University mode active. Let's get to work."
+  },
+  "entertainment": {
+    "trigger_keywords": ["relax", "movie", "youtube", "bored", "play"],
+    "apps": [
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+    ],
+    "urls": ["https://www.youtube.com"],
+    "tts_response": "Entertainment protocol engaged. Enjoy your break."
+  }
+}
